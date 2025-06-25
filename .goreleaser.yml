@@ -3,7 +3,7 @@ version: 2
 project_name: secrets-lambda-extension
 
 builds:
-  - binary: secrets
+  - binary: bin/secrets
     main: secrets.go
     ldflags:
       - -s -w
@@ -35,14 +35,15 @@ snapshot:
 
 archives:
   - formats: [ 'tar.gz' ]
-    name_template: "{{ .ProjectName }}-{{ .Tag }}-{{ .Os }}-{{ .Arch }}"
+    name_template: "{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}"
     format_overrides:
       - goos: windows
         formats: [ 'zip' ]
     files:
       - LICENSE
       - README.md
-      - scripts/*
+      - src: scripts/*
+        strip_parent: true
 
 changelog:
   disable: true

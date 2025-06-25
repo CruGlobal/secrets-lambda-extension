@@ -101,11 +101,6 @@ func main() {
 		file.Close()
 	}
 	// Cache exists, use it
-	data, err := os.ReadFile(cacheFile)
-	if err != nil {
-		fmt.Printf("Error reading cache file: %v\n", err)
-		os.Exit(1)
-	}
-	fmt.Printf(string(data))
+	fmt.Printf("%s", cacheFile)
 	os.Exit(0)
 }
