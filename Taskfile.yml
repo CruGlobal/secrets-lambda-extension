@@ -1,0 +1,12 @@
+version: '3'
+# See https://github.com/go-task/task/blob/main/Taskfile.yml
+
+tasks:
+  default:
+    cmds:
+      - task: build
+
+  build:
+    desc: Builds the project
+    cmds:
+      - go build -o secrets secrets.go {{.CLI_ARGS}}
