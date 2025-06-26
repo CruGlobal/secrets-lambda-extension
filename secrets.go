@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"al.essio.dev/pkg/shellescape"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	ssmtypes "github.com/aws/aws-sdk-go-v2/service/ssm/types"
@@ -45,7 +46,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	cacheFile := filepath.Join(os.TempDir(), "secrets-cache", fmt.Sprintf("%s-%s-%s", project, environment, build))
+	cacheDir := filepath.Join(os.TempDir(), "org.cru.secrets-lambda-cache")
+	err := os.MkdirAll(cacheDir, 0755)
+	if err != nil {
+		fmt.Printf("Error creating cache directory: %v\n", err)
+		os.Exit(1)
+	}
+
+	cacheFile := filepath.Join(cacheDir, fmt.Sprintf("%s-%s-%s", project, environment, build))
 
 	if _, err := os.Stat(cacheFile); os.IsNotExist(err) {
 		// Cache does not exist
@@ -76,12 +84,13 @@ func main() {
 					ResourceId:   parameter.Name,
 				})
 				if err != nil {
-					fmt.Printf("Error fetching parameters: %v\n", err)
+					fmt.Printf("Error fetching tags for parameter: %v\n", err)
 					os.Exit(1)
 				}
 				for _, tag := range tagsResponse.TagList {
-					if tag.Key == aws.String("param_type") {
+					if *tag.Key == "param_type" {
 						if *tag.Value == "RUNTIME" || *tag.Value == "ALL" {
+							// Only include parameters with type RUNTIME or ALL
 							parameters = append(parameters, parameter)
 						}
 					}
@@ -96,7 +105,7 @@ func main() {
 		for _, parameter := range parameters {
 			key := strings.TrimPrefix(aws.ToString(parameter.Name), prefix)
 			value := aws.ToString(parameter.Value)
-			fmt.Fprintf(file, "export %s=%s\n", key, value)
+			fmt.Fprintf(file, "export %s=%s\n", key, shellescape.Quote(value))
 		}
 		file.Close()
 	}

@@ -2,7 +2,7 @@
 This is an internal lambda extension used to modify the lambda runtime process by adding environment variables (`secrets`)
 defined in AWS SSM Parameter Store to the node environment.
 
-This extension requires the Lambda be defined with the uses [aws/lambda/app](https://github.com/CruGlobal/cru-terraform-modules/tree/main/aws/lambda/app) Terraform Module. This will ensure the
+This extension requires the Lambda be defined with the [aws/lambda/app](https://github.com/CruGlobal/cru-terraform-modules/tree/main/aws/lambda/app) Terraform Module. This will ensure the
 correct permissions and ENV variables to retrieve the secrets. All secrets with `RUNTIME` or `ALL` visibility will be
 added to the execution environment of the Lambda function.
 
