@@ -12,7 +12,6 @@ import (
 	"al.essio.dev/pkg/shellescape"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
-	ssmtypes "github.com/aws/aws-sdk-go-v2/service/ssm/types"
 )
 
 func env(environment string) string {
@@ -78,24 +77,7 @@ func main() {
 				fmt.Printf("Error fetching parameters: %v\n", err)
 				os.Exit(1)
 			}
-			for _, parameter := range response.Parameters {
-				tagsResponse, err := client.ListTagsForResource(ctx, &ssm.ListTagsForResourceInput{
-					ResourceType: ssmtypes.ResourceTypeForTaggingParameter,
-					ResourceId:   parameter.Name,
-				})
-				if err != nil {
-					fmt.Printf("Error fetching tags for parameter: %v\n", err)
-					os.Exit(1)
-				}
-				for _, tag := range tagsResponse.TagList {
-					if *tag.Key == "param_type" {
-						if *tag.Value == "RUNTIME" || *tag.Value == "ALL" {
-							// Only include parameters with type RUNTIME or ALL
-							parameters = append(parameters, parameter)
-						}
-					}
-				}
-			}
+			parameters = append(parameters, response.Parameters...)
 		}
 		file, err := os.Create(cacheFile)
 		if err != nil {
