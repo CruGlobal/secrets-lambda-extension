@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/CruGlobal/secrets-lambda-extension/compare/v1.0.0...v1.0.1) (2025-07-10)
+
+
+### Bug Fixes
+
+* ListTagsForResource: ThrottlingException ([#7](https://github.com/CruGlobal/secrets-lambda-extension/issues/7)) ([fb91863](https://github.com/CruGlobal/secrets-lambda-extension/commit/fb918632818c24481ed145db7aca11dfe78e7644))
+
 ## [1.0.0](https://github.com/CruGlobal/secrets-lambda-extension/compare/v1.0.0...v1.0.0) (2025-06-26)
 
 
