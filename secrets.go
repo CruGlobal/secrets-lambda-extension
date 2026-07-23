@@ -39,10 +39,13 @@ func main() {
 		fmt.Println("ENVIRONMENT environment variable not set")
 		os.Exit(1)
 	}
+	// BUILD_NUMBER is optional: it is only a cache-filename component. v1 images
+	// bake it at build time; pipeline-v2 images are environment-neutral and set no
+	// build number. The /tmp cache is scoped to a single execution environment,
+	// which never survives a code deploy, so a static fallback is safe.
 	build, exists := os.LookupEnv("BUILD_NUMBER")
 	if !exists {
-		fmt.Println("BUILD_NUMBER environment variable not set")
-		os.Exit(1)
+		build = "0"
 	}
 
 	cacheDir := filepath.Join(os.TempDir(), "org.cru.secrets-lambda-cache")
