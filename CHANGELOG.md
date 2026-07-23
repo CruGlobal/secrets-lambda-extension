@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.2](https://github.com/CruGlobal/secrets-lambda-extension/compare/v1.0.1...v1.0.2) (2026-07-23)
+
+
+### Bug Fixes
+
+* make BUILD_NUMBER optional ([#14](https://github.com/CruGlobal/secrets-lambda-extension/issues/14)) ([3d25f84](https://github.com/CruGlobal/secrets-lambda-extension/commit/3d25f84185c8f0f92e8005924a50a791d192b5f7))
+
 ## [1.0.1](https://github.com/CruGlobal/secrets-lambda-extension/compare/v1.0.0...v1.0.1) (2025-07-10)
 
 
