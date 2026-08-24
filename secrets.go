@@ -7,12 +7,17 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"al.essio.dev/pkg/shellescape"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 )
+
+// SSM permits '.' and '-' in a parameter name; bash rejects them in an identifier, and its
+// "not a valid identifier" error echoes the whole assignment including the secret.
+var shellIdentifier = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 func env(environment string) string {
 	switch environment {
@@ -89,6 +94,10 @@ func main() {
 		}
 		for _, parameter := range parameters {
 			key := strings.TrimPrefix(aws.ToString(parameter.Name), prefix)
+			if !shellIdentifier.MatchString(key) {
+				fmt.Fprintf(os.Stderr, "Skipping %s: not a valid shell identifier\n", key)
+				continue
+			}
 			value := aws.ToString(parameter.Value)
 			fmt.Fprintf(file, "export %s=%s\n", key, shellescape.Quote(value))
 		}
