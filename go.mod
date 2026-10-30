@@ -1,6 +1,6 @@
 module github.com/CruGlobal/secrets-lambda-extension
 
-go 1.24.4
+go 1.27.3
 
 require (
 	al.essio.dev/pkg/shellescape v1.6.0
