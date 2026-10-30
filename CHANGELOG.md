@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.3](https://github.com/CruGlobal/secrets-lambda-extension/compare/v1.0.2...v1.0.3) (2026-10-30)
+
+
+### Bug Fixes
+
+* **deps:** build with Go 1.27.3 to clear stdlib CVEs ([#18](https://github.com/CruGlobal/secrets-lambda-extension/issues/18)) ([604105a](https://github.com/CruGlobal/secrets-lambda-extension/commit/604105afc501510624af15d427fcd6aafe511251))
+* skip parameters that are not valid shell identifiers ([#16](https://github.com/CruGlobal/secrets-lambda-extension/issues/16)) ([483d92e](https://github.com/CruGlobal/secrets-lambda-extension/commit/483d92e8f6024932f3a4c400d793bb6e18ba2f39))
+
 ## [1.0.2](https://github.com/CruGlobal/secrets-lambda-extension/compare/v1.0.1...v1.0.2) (2026-07-23)
 
 
