@@ -3,8 +3,18 @@ This is an internal lambda extension used to modify the lambda runtime process b
 defined in AWS SSM Parameter Store to the function's environment.
 
 This extension requires the Lambda be defined with the [aws/lambda/app](https://github.com/CruGlobal/cru-terraform-modules/tree/main/aws/lambda/app) Terraform Module. This will ensure the
-correct permissions and ENV variables to retrieve the secrets. All secrets with `RUNTIME` or `ALL` visibility will be
-added to the execution environment of the Lambda function.
+correct permissions and ENV variables to retrieve the secrets.
+
+## Which parameters it loads
+
+It loads **every** parameter under `/ecs/<PROJECT_NAME>/<env>/`, where `<env>` is `prod` for `ENVIRONMENT=production`,
+`stage` for `staging`, and `lab` for anything else. It adds each one to the function's environment, named by the part
+of the parameter name after that path. A name that isn't a valid shell variable name is skipped.
+
+It does **not** read a parameter's `param_type` tag (`RUNTIME`, `BUILD` or `ALL`). It used to, but that took one
+`ListTagsForResource` call per parameter on every cold start, and busy functions hit the API's rate limit and failed to
+start (changed in v1.0.1, #7). So a parameter tagged `BUILD` is loaded too. Under pipeline v2 that path holds runtime
+values only: build-time secrets are repository secrets named `BUILD_<NAME>`, not parameters.
 
 ## Usage
 Add to the Lambda Dockerfile using Multi-Stage build:
