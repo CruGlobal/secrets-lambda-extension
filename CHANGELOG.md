@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/CruGlobal/secrets-lambda-extension/compare/v1.0.3...v1.1.0) (2026-11-09)
+
+
+### Features
+
+* load only the parameters named in SECRETS_PARAMETERS ([#21](https://github.com/CruGlobal/secrets-lambda-extension/issues/21)) ([53a38b7](https://github.com/CruGlobal/secrets-lambda-extension/commit/53a38b78d5c8c2b446b9cd9e53b0dfac9057fe46))
+
 ## [1.0.3](https://github.com/CruGlobal/secrets-lambda-extension/compare/v1.0.2...v1.0.3) (2026-10-30)
 
 
