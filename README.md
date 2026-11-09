@@ -7,9 +7,33 @@ correct permissions and ENV variables to retrieve the secrets.
 
 ## Which parameters it loads
 
-It loads **every** parameter under `/ecs/<PROJECT_NAME>/<env>/`, where `<env>` is `prod` for `ENVIRONMENT=production`,
-`stage` for `staging`, and `lab` for anything else. It adds each one to the function's environment, named by the part
-of the parameter name after that path. A name that isn't a valid shell variable name is skipped.
+By default it loads **every** parameter under `/ecs/<PROJECT_NAME>/<env>/`, where `<env>` is `prod` for
+`ENVIRONMENT=production`, `stage` for `staging`, and `lab` for anything else. It adds each one to the function's
+environment, named by the part of the parameter name after that path. A name that isn't a valid shell variable name is
+skipped. To load only some of them, set `SECRETS_PARAMETERS` (below).
+
+### Loading only named parameters: `SECRETS_PARAMETERS`
+
+Set `SECRETS_PARAMETERS` to a comma-separated list of parameter names, the part after `/ecs/<PROJECT_NAME>/<env>/`:
+
+```
+SECRETS_PARAMETERS=DATABASE_URL,API_KEY
+```
+
+It is meant for a function with its own IAM role that may call `ssm:GetParameters` on only its listed parameters and
+can't read the whole path. When it is set, the extension:
+
+- fetches exactly `/ecs/<PROJECT_NAME>/<env>/<NAME>` for each name with `GetParameters`, 10 names per call, and never
+  reads by path;
+- trims spaces around each name and ignores empty entries and repeats;
+- loads nothing when the value is `none` or empty. A function that has its own role but no parameters uses `none`, so it
+  still never reads by path;
+- refuses to start when a name isn't a valid shell variable name, when a listed parameter doesn't exist, or when the
+  role can't read one (AccessDenied). The error names the parameters, never their values, and shows in the function's
+  log as `Failed to retrieve secrets: ...`, the same as any other SSM error.
+
+Each parameter it loads lands in the environment under the same name, and is cached the same way, as in the default
+mode. Leave `SECRETS_PARAMETERS` unset to keep loading every parameter under the path.
 
 It does **not** read a parameter's `param_type` tag (`RUNTIME`, `BUILD` or `ALL`). It used to, but that took one
 `ListTagsForResource` call per parameter on every cold start, and busy functions hit the API's rate limit and failed to
