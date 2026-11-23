@@ -81,6 +81,14 @@ func newSSMServer(t *testing.T, parameters map[string]string) *ssmServer {
 	return s
 }
 
+// setDeny makes every later call fail with AccessDeniedException. It takes the lock because
+// the server's handler goroutines read deny.
+func (s *ssmServer) setDeny(deny bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.deny = deny
+}
+
 func (s *ssmServer) callCount(operation string) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -351,7 +359,7 @@ func TestWrapperModeFailures(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			server := newSSMServer(t, fixture())
-			server.deny = tc.deny
+			server.setDeny(tc.deny)
 			env := tc.env(testEnvironment(t, server))
 			got := run(t, env, secretsBinary(t))
 			if got.code != 1 {
@@ -644,7 +652,7 @@ func TestExecModeFailsClosed(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			server := newSSMServer(t, fixture())
-			server.deny = tc.deny
+			server.setDeny(tc.deny)
 			env := testEnvironment(t, server, helperVariable+"=1")
 			if tc.env != nil {
 				env = tc.env(env)
