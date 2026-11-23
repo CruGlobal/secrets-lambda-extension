@@ -359,8 +359,12 @@ func TestBothModesWriteTheSameExports(t *testing.T) {
 
 	// The fake's by-path order follows map iteration; compare the lines as sets.
 	var pathOut, nameOut bytes.Buffer
-	writeExports(&pathOut, testPrefix, byPath)
-	writeExports(&nameOut, testPrefix, byName)
+	if err := writeExports(&pathOut, testPrefix, byPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeExports(&nameOut, testPrefix, byName); err != nil {
+		t.Fatal(err)
+	}
 	pathLines := strings.Split(strings.TrimSpace(pathOut.String()), "\n")
 	nameLines := strings.Split(strings.TrimSpace(nameOut.String()), "\n")
 	if !sameSet(pathLines, nameLines) {
@@ -371,6 +375,39 @@ func TestBothModesWriteTheSameExports(t *testing.T) {
 	}
 	if !strings.Contains(nameOut.String(), `export QUOTED='it'"'"'s got '"'"'quotes'"'"' & $vars'`) {
 		t.Errorf("value was not shell-quoted: %q", nameOut.String())
+	}
+}
+
+// failingWriter accepts limit bytes, then fails every write.
+type failingWriter struct {
+	limit   int
+	written bytes.Buffer
+}
+
+var errDiskFull = errors.New("no space left on device")
+
+func (w *failingWriter) Write(p []byte) (int, error) {
+	if w.written.Len()+len(p) > w.limit {
+		n := w.limit - w.written.Len()
+		w.written.Write(p[:n])
+		return n, errDiskFull
+	}
+	return w.written.Write(p)
+}
+
+func TestWriteExportsReturnsWriteErrors(t *testing.T) {
+	f, names := seeded(3)
+	parameters, err := fetch(context.Background(), f, testPrefix, names, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Room for the first line and part of the second.
+	w := &failingWriter{limit: len("export PARAM_1=secret-value-1\n") + 5}
+	if err := writeExports(w, testPrefix, parameters); !errors.Is(err, errDiskFull) {
+		t.Errorf("writeExports error = %v, want the write error", err)
+	}
+	if strings.Contains(w.written.String(), "PARAM_3") {
+		t.Errorf("writeExports kept writing after an error: %q", w.written.String())
 	}
 }
 
