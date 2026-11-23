@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.2.0](https://github.com/CruGlobal/secrets-lambda-extension/compare/v1.1.0...v1.2.0) (2026-11-23)
+
+
+### Features
+
+* add an exec mode that runs a command with the parameters in its environment, with no shell ([167bbae](https://github.com/CruGlobal/secrets-lambda-extension/commit/167bbaee28fef96d5f6e225ba08ec9dba945c54f))
+
+
+### Bug Fixes
+
+* fail when the exports file can't be fully written ([167bbae](https://github.com/CruGlobal/secrets-lambda-extension/commit/167bbaee28fef96d5f6e225ba08ec9dba945c54f))
+* stop the wrapper when it can't read the exports file ([167bbae](https://github.com/CruGlobal/secrets-lambda-extension/commit/167bbaee28fef96d5f6e225ba08ec9dba945c54f))
+
 ## [1.1.0](https://github.com/CruGlobal/secrets-lambda-extension/compare/v1.0.3...v1.1.0) (2026-11-09)
 
 
