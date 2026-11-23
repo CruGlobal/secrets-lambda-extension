@@ -70,3 +70,29 @@ shell identifier (fixed in v1.0.3).
 
 ### Reference
 - [AWS Lambda Wrappers](https://docs.aws.amazon.com/lambda/latest/dg/runtimes-modify.html)
+
+## Running on an image with no shell: `secrets exec`
+
+`secrets-wrapper` is a bash script, so the image needs bash. On an image with no shell, such as a distroless base for a
+Go function, make the binary's `exec` mode the image's entry point instead:
+
+```dockerfile
+COPY --from=extension /opt/secrets-lambda-extension/bin/secrets /opt/secrets-lambda-extension/bin/secrets
+ENTRYPOINT ["/opt/secrets-lambda-extension/bin/secrets", "exec", "--", "/var/task/bootstrap"]
+```
+
+`secrets exec [--] <command> [args...]` loads the same parameters as the wrapper, from the same variables
+(`PROJECT_NAME`, `ENVIRONMENT` and `SECRETS_PARAMETERS`), then replaces itself with the command, which starts with the
+parameters in its environment. Arguments after the command, such as the image's `CMD`, are passed on unchanged.
+
+- It needs no shell and writes no file. Nothing goes to `/tmp`, and values are never quoted, so they reach the command
+  byte for byte.
+- A parameter replaces a variable of the same name that is already set, as with the wrapper.
+- If it can't load the parameters, or can't find or run the command, it prints why on stderr and exits 1 before the
+  command starts, so the function fails to start rather than run without its secrets. A load failure reads
+  `Failed to retrieve secrets: ...`, as with the wrapper.
+- It keeps no cache, so it reads SSM every time it starts, even when the runtime restarts within one execution
+  environment.
+- A command with no `/` is looked up on `PATH` after the parameters are loaded.
+
+`secrets exec` is in v1.2.0 and later. With no arguments the binary works as before, so `secrets-wrapper` is unchanged.

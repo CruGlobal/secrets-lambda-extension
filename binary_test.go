@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -28,6 +29,11 @@ var (
 )
 
 func TestMain(m *testing.M) {
+	// The exec tests run this test binary as the command, to see what it was given.
+	if os.Getenv(helperVariable) == "1" {
+		json.NewEncoder(os.Stdout).Encode(helperOutput{Pid: os.Getpid(), Args: os.Args, Environ: os.Environ()})
+		os.Exit(0)
+	}
 	dir, err := os.MkdirTemp("", "secrets-test-bin-")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -220,9 +226,19 @@ func lookup(env []string, name string) string {
 	return ""
 }
 
+const helperVariable = "SECRETS_TEST_PRINT_ENVIRONMENT"
+
+// helperOutput is what the test binary prints when it runs as the command.
+type helperOutput struct {
+	Pid     int
+	Args    []string
+	Environ []string
+}
+
 type result struct {
 	stdout, stderr string
 	code           int
+	pid            int
 }
 
 func run(t *testing.T, env []string, name string, args ...string) result {
@@ -240,7 +256,7 @@ func run(t *testing.T, env []string, name string, args ...string) result {
 	} else if err != nil {
 		t.Fatalf("could not run %s: %v", name, err)
 	}
-	return result{stdout.String(), stderr.String(), code}
+	return result{stdout.String(), stderr.String(), code, cmd.Process.Pid}
 }
 
 // TestWrapperModeOutput pins what the binary does with no arguments, which is what
@@ -482,5 +498,180 @@ func TestWrapperRoundTrip(t *testing.T) {
 		if want := fixture()["/ecs/example-app/prod/"+name]; variables[name] != want {
 			t.Errorf("%s = %q, want %q", name, variables[name], want)
 		}
+	}
+}
+
+// helper returns the path of this test binary, which prints what it was given when
+// helperVariable is set.
+func helper(t *testing.T) string {
+	t.Helper()
+	path, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.ContainsAny(path, " \t\n") {
+		t.Skipf("the wrapper splits its arguments on spaces, and the test binary's path has one: %q", path)
+	}
+	return path
+}
+
+func parseHelper(t *testing.T, got result) (helperOutput, map[string]string) {
+	t.Helper()
+	if got.code != 0 {
+		t.Fatalf("exit %d, stdout %q, stderr %q", got.code, got.stdout, got.stderr)
+	}
+	var output helperOutput
+	if err := json.Unmarshal([]byte(got.stdout), &output); err != nil {
+		t.Fatalf("the command's output isn't the helper's: %v\n%s", err, got.stdout)
+	}
+	environ := map[string]string{}
+	for _, entry := range output.Environ {
+		if name, value, ok := strings.Cut(entry, "="); ok {
+			if _, seen := environ[name]; seen {
+				t.Errorf("%s is in the environment more than once", name)
+			}
+			environ[name] = value
+		}
+	}
+	return output, environ
+}
+
+// TestExecModeEndToEnd runs `secrets exec` for real: the binary loads from the fake and
+// execs this test binary, which reports what it was given.
+func TestExecModeEndToEnd(t *testing.T) {
+	server := newSSMServer(t, fixture())
+	env := testEnvironment(t, server, helperVariable+"=1", "API_KEY=set-before-the-load", "UNRELATED=kept")
+	command := helper(t)
+	args := []string{"api", "two words", "--", "it's \"quoted\"", "$HOME", "line\nbreak", ""}
+
+	got := run(t, env, secretsBinary(t), append([]string{"exec", "--", command}, args...)...)
+	output, environ := parseHelper(t, got)
+
+	if output.Pid != got.pid {
+		t.Errorf("the command ran as pid %d, want %d: exec should replace the process", output.Pid, got.pid)
+	}
+	if want := append([]string{command}, args...); !reflect.DeepEqual(output.Args, want) {
+		t.Errorf("args = %q, want %q", output.Args, want)
+	}
+	for _, name := range fixtureVariables {
+		if want := fixture()["/ecs/example-app/prod/"+name]; environ[name] != want {
+			t.Errorf("%s = %q, want %q", name, environ[name], want)
+		}
+	}
+	if environ["UNRELATED"] != "kept" || environ["PROJECT_NAME"] != "example-app" {
+		t.Errorf("UNRELATED = %q, PROJECT_NAME = %q", environ["UNRELATED"], environ["PROJECT_NAME"])
+	}
+	if _, ok := environ["github-token"]; ok {
+		t.Error("github-token should have been skipped")
+	}
+	if got.stderr != "Skipping github-token: not a valid shell identifier\n" {
+		t.Errorf("stderr = %q", got.stderr)
+	}
+	if entries, err := os.ReadDir(lookup(env, "TMPDIR")); err != nil || len(entries) != 0 {
+		t.Errorf("exec mode wrote %d entries to TMPDIR (err %v), want none", len(entries), err)
+	}
+}
+
+// TestExecModeMatchesTheWrapper starts the same command both ways and checks that it gets
+// the same variables.
+func TestExecModeMatchesTheWrapper(t *testing.T) {
+	for _, mode := range []struct{ name, secretsParameters string }{
+		{"by path", ""},
+		{"named", "SECRETS_PARAMETERS=QUOTED,MULTI_LINE,API_KEY"},
+	} {
+		t.Run(mode.name, func(t *testing.T) {
+			server := newSSMServer(t, fixture())
+			env := testEnvironment(t, server, helperVariable+"=1", "API_KEY=set-before-the-load")
+			if mode.secretsParameters != "" {
+				env = append(env, mode.secretsParameters)
+			}
+			command := helper(t)
+			_, viaWrapper := parseHelper(t, run(t, env, wrapperScript(t, secretsBinary(t)), command))
+			_, viaExec := parseHelper(t, run(t, env, secretsBinary(t), "exec", command))
+
+			for _, name := range fixtureVariables {
+				if viaExec[name] != viaWrapper[name] {
+					t.Errorf("%s: exec gave %q, the wrapper gave %q", name, viaExec[name], viaWrapper[name])
+				}
+			}
+			if viaExec["API_KEY"] != "abc123" {
+				t.Errorf("API_KEY = %q, want the SSM value", viaExec["API_KEY"])
+			}
+		})
+	}
+}
+
+func TestExecModeLoadsEveryPage(t *testing.T) {
+	parameters := map[string]string{}
+	for i := 1; i <= 25; i++ {
+		parameters[fmt.Sprintf("/ecs/example-app/prod/PARAM_%02d", i)] = fmt.Sprintf("value-%d", i)
+	}
+	server := newSSMServer(t, parameters)
+	env := testEnvironment(t, server, helperVariable+"=1")
+
+	_, environ := parseHelper(t, run(t, env, secretsBinary(t), "exec", "--", helper(t)))
+	for name, value := range parameters {
+		if key := strings.TrimPrefix(name, "/ecs/example-app/prod/"); environ[key] != value {
+			t.Errorf("%s = %q, want %q", key, environ[key], value)
+		}
+	}
+	if calls := server.callCount("GetParametersByPath"); calls != 3 {
+		t.Errorf("GetParametersByPath calls = %d, want 3 pages of up to 10", calls)
+	}
+}
+
+// TestExecModeFailsClosed checks that every failure exits 1 with a message on stderr and
+// never starts the command.
+func TestExecModeFailsClosed(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		env     func([]string) []string
+		deny    bool
+		args    func(command string) []string
+		message string
+	}{
+		{"access denied", nil, true, nil, "Failed to retrieve secrets: Error fetching parameters: "},
+		{"missing named parameter", func(e []string) []string { return append(e, "SECRETS_PARAMETERS=API_KEY,MISSING") }, false, nil,
+			"Failed to retrieve secrets: Error fetching parameters: not found under /ecs/example-app/prod/: MISSING\n"},
+		{"invalid name", func(e []string) []string { return append(e, "SECRETS_PARAMETERS=github-token") }, false, nil,
+			"Failed to retrieve secrets: Invalid SECRETS_PARAMETERS: not valid environment variable names: \"github-token\"\n"},
+		{"no project", func(e []string) []string { return without(e, "PROJECT_NAME") }, false, nil,
+			"Failed to retrieve secrets: PROJECT_NAME environment variable not set\n"},
+		{"no command", nil, false, func(string) []string { return []string{"exec", "--"} },
+			"secrets exec: no command given. Usage: secrets exec [--] <command> [args...]\n"},
+		{"command missing", nil, false, func(string) []string { return []string{"exec", "--", "/no/such/command"} },
+			"secrets exec: cannot run /no/such/command: "},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := newSSMServer(t, fixture())
+			server.deny = tc.deny
+			env := testEnvironment(t, server, helperVariable+"=1")
+			if tc.env != nil {
+				env = tc.env(env)
+			}
+			command := helper(t)
+			args := []string{"exec", "--", command}
+			if tc.args != nil {
+				args = tc.args(command)
+			}
+
+			got := run(t, env, secretsBinary(t), args...)
+			if got.code != 1 {
+				t.Errorf("exit %d, want 1", got.code)
+			}
+			if got.stdout != "" {
+				t.Errorf("the command ran: stdout %q", got.stdout)
+			}
+			// The command is looked up after the load, so a by-path load's skip note can come first.
+			if !strings.Contains(got.stderr, tc.message) {
+				t.Errorf("stderr = %q, want it to hold %q", got.stderr, tc.message)
+			}
+			if strings.Contains(got.stderr, "abc123") {
+				t.Errorf("stderr leaks a parameter value: %q", got.stderr)
+			}
+			if tc.deny && server.callCount("GetParametersByPath") != 1 {
+				t.Errorf("the denied call never reached the fake: %v", server.calls)
+			}
+		})
 	}
 }
