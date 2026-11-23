@@ -428,6 +428,44 @@ func parseVariables(output string) map[string]string {
 	return variables
 }
 
+// TestWrapperFailsWhenItCanNotReadTheFile gives the wrapper a secrets stand-in that exits 0
+// but prints a path it can't source. The wrapper must exit 1 and never run the command.
+func TestWrapperFailsWhenItCanNotReadTheFile(t *testing.T) {
+	dir := t.TempDir()
+	unreadable := filepath.Join(dir, "unreadable")
+	if err := os.WriteFile(unreadable, []byte("export API_KEY=abc123\n"), 0o000); err != nil {
+		t.Fatal(err)
+	}
+	cases := map[string]string{
+		"missing":   filepath.Join(dir, "missing"),
+		"directory": dir,
+		"empty":     "",
+	}
+	if os.Geteuid() != 0 { // root reads it anyway
+		cases["unreadable"] = unreadable
+	}
+	for name, path := range cases {
+		t.Run(name, func(t *testing.T) {
+			stub := filepath.Join(t.TempDir(), "secrets")
+			body := fmt.Sprintf("#!/bin/sh\nprintf '%%s' '%s'\n", path)
+			if err := os.WriteFile(stub, []byte(body), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			marker := filepath.Join(t.TempDir(), "command-ran")
+			got := run(t, []string{"PATH=" + os.Getenv("PATH")}, wrapperScript(t, stub), "touch", marker)
+			if got.code != 1 {
+				t.Errorf("exit %d, stdout %q, stderr %q; want exit 1", got.code, got.stdout, got.stderr)
+			}
+			if want := "Failed to retrieve secrets: could not read " + path + "\n"; got.stdout != want {
+				t.Errorf("stdout = %q, want %q", got.stdout, want)
+			}
+			if _, err := os.Stat(marker); err == nil {
+				t.Error("the wrapper ran the command without its secrets")
+			}
+		})
+	}
+}
+
 // TestWrapperRoundTrip runs the real wrapper: bash sources the exports file and runs a
 // command, which must see every value exactly as SSM holds it.
 func TestWrapperRoundTrip(t *testing.T) {
