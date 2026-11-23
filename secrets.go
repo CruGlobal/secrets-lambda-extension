@@ -156,8 +156,9 @@ func fetch(ctx context.Context, client ssmClient, prefix string, names []string,
 }
 
 // writeExports writes one shell export per parameter, named by the part of its name after
-// prefix. Both modes go through here, so the environment they build looks the same.
-func writeExports(w io.Writer, prefix string, parameters []types.Parameter) {
+// prefix. Both modes go through here, so the environment they build looks the same. It
+// stops at the first write error.
+func writeExports(w io.Writer, prefix string, parameters []types.Parameter) error {
 	for _, parameter := range parameters {
 		key := strings.TrimPrefix(aws.ToString(parameter.Name), prefix)
 		if !shellIdentifier.MatchString(key) {
@@ -165,8 +166,11 @@ func writeExports(w io.Writer, prefix string, parameters []types.Parameter) {
 			continue
 		}
 		value := aws.ToString(parameter.Value)
-		fmt.Fprintf(w, "export %s=%s\n", key, shellescape.Quote(value))
+		if _, err := fmt.Fprintf(w, "export %s=%s\n", key, shellescape.Quote(value)); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 func main() {
@@ -226,8 +230,17 @@ func main() {
 			fmt.Printf("Error creating cache file: %v\n", err)
 			os.Exit(1)
 		}
-		writeExports(file, prefix, parameters)
-		file.Close()
+		err = writeExports(file, prefix, parameters)
+		if closeErr := file.Close(); err == nil {
+			err = closeErr
+		}
+		if err != nil {
+			// Remove the short file, or the next start would find it and run without the
+			// parameters that didn't make it in.
+			os.Remove(cacheFile)
+			fmt.Printf("Error writing cache file: %v\n", err)
+			os.Exit(1)
+		}
 	}
 	// Cache exists, use it
 	fmt.Printf("%s", cacheFile)

@@ -358,6 +358,35 @@ func TestWrapperModeFailures(t *testing.T) {
 	}
 }
 
+// TestWrapperModeFailsWhenTheFileCanNotBeWritten runs the binary with a file size limit of
+// zero, so every write to the exports file fails, as it would with /tmp full.
+func TestWrapperModeFailsWhenTheFileCanNotBeWritten(t *testing.T) {
+	server := newSSMServer(t, fixture())
+	env := testEnvironment(t, server)
+	binary := secretsBinary(t)
+	cacheFile := filepath.Join(lookup(env, "TMPDIR"), "org.cru.secrets-lambda-cache", "example-app-production-0")
+
+	got := run(t, env, "/bin/sh", "-c", `ulimit -f 0 && exec "$0" "$@"`, binary)
+	if got.code != 1 {
+		t.Fatalf("exit %d, stdout %q, stderr %q; want exit 1", got.code, got.stdout, got.stderr)
+	}
+	if !strings.HasPrefix(got.stdout, "Error writing cache file: ") {
+		t.Errorf("stdout = %q", got.stdout)
+	}
+	if _, err := os.Stat(cacheFile); !os.IsNotExist(err) {
+		t.Errorf("a failed write left the cache file behind (stat: %v)", err)
+	}
+
+	// With room to write, the next start loads again instead of trusting a short file.
+	again := run(t, env, binary)
+	if again.code != 0 || again.stdout != cacheFile {
+		t.Fatalf("exit %d, stdout %q, stderr %q", again.code, again.stdout, again.stderr)
+	}
+	if server.callCount("GetParametersByPath") != 2 {
+		t.Errorf("GetParametersByPath calls = %d, want 2", server.callCount("GetParametersByPath"))
+	}
+}
+
 // wrapperScript copies scripts/secrets-wrapper into a temp folder, pointed at secrets
 // instead of /opt/secrets-lambda-extension/bin/secrets.
 func wrapperScript(t *testing.T, secrets string) string {
